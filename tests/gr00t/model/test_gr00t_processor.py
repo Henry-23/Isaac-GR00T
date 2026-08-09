@@ -181,6 +181,42 @@ class TestProcessorCall:
         result = processor(messages)
         assert isinstance(result["embodiment_id"], (int, np.integer))
 
+    def test_action_mask_emitted_without_action(self, processor, proc_config):
+        """Inference steps carry no action, but the model still needs the mask."""
+        step_data = _make_step_data(proc_config)
+        step_data.actions = {}
+        messages = [{"type": MessageType.EPISODE_STEP.value, "content": step_data}]
+        result = processor(messages)
+
+        mc = proc_config["modality_configs"][EMBODIMENT]
+        action_horizon = len(mc["action"]["delta_indices"])
+        action_dim = processor.state_action_processor.get_action_dim(EMBODIMENT)
+        action_mask = result["action_mask"]
+
+        assert "action" not in result
+        assert action_mask.shape == (
+            proc_config["max_action_horizon"],
+            proc_config["max_action_dim"],
+        )
+        assert torch.all(action_mask[:action_horizon, :action_dim] == 1)
+        assert torch.all(action_mask[action_horizon:, :] == 0)
+        assert torch.all(action_mask[:, action_dim:] == 0)
+
+    def test_action_mask_identical_with_and_without_action(self, processor, proc_config):
+        """Padding must be masked the same way in training and in inference."""
+        train_step = _make_step_data(proc_config)
+        train_mask = processor(
+            [{"type": MessageType.EPISODE_STEP.value, "content": train_step}]
+        )["action_mask"]
+
+        inference_step = _make_step_data(proc_config)
+        inference_step.actions = {}
+        inference_mask = processor(
+            [{"type": MessageType.EPISODE_STEP.value, "content": inference_step}]
+        )["action_mask"]
+
+        torch.testing.assert_close(train_mask, inference_mask)
+
     def test_inference_action_mask_covers_horizon_and_dimension(self, processor, proc_config):
         mc = proc_config["modality_configs"][EMBODIMENT]
         with open(FIXTURE_DIR / "statistics.json") as f:

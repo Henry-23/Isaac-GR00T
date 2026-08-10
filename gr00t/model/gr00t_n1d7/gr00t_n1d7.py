@@ -249,9 +249,7 @@ class Gr00tN1d7ActionHead(nn.Module):
         action_mask = _expand_action_mask(action_input.action_mask, actions)
         if action_mask is None:
             raise ValueError("action_mask is required during training")
-        strict_action_mask = (
-            action_mask if getattr(self.config, "strict_action_padding_mask", False) else None
-        )
+        strict_action_mask = action_mask if self.config.strict_action_padding_mask else None
         if strict_action_mask is not None:
             actions = actions * strict_action_mask
         noise = torch.randn(actions.shape, device=actions.device, dtype=actions.dtype)
@@ -405,7 +403,7 @@ class Gr00tN1d7ActionHead(nn.Module):
         dt = 1.0 / self.num_inference_timesteps
         vel_strength = torch.ones_like(actions)
         action_mask = None
-        if getattr(self.config, "strict_action_padding_mask", False):
+        if self.config.strict_action_padding_mask:
             action_mask = _expand_action_mask(action_input.get("action_mask"), actions)
             if action_mask is None:
                 raise ValueError(

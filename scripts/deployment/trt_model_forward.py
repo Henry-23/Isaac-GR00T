@@ -526,7 +526,7 @@ def action_head_tensorrt_forward(self, backbone_output, action_input, options=No
         )
 
     action_mask = None
-    if getattr(self.config, "strict_action_padding_mask", False):
+    if self.config.strict_action_padding_mask:
         action_mask = _expand_action_mask(action_input.get("action_mask"), actions)
         if action_mask is None:
             raise ValueError("action_mask is required when strict_action_padding_mask is enabled")
@@ -963,7 +963,7 @@ def _setup_dit_only(policy, trt_engine_path):
         )
 
         action_mask = None
-        if getattr(action_head.config, "strict_action_padding_mask", False):
+        if action_head.config.strict_action_padding_mask:
             action_mask = _expand_action_mask(
                 action_input.get("action_mask") if action_input is not None else None,
                 actions,

@@ -69,6 +69,21 @@ def test_masked_padding_matches_compact_sequence(model_cls):
 
 
 @pytest.mark.parametrize("model_cls", [DiT, AlternateVLDiT])
+def test_all_valid_mask_is_a_no_op(model_cls):
+    """Sequences without padding must behave exactly as they did before masking."""
+    torch.manual_seed(3)
+    model = _make_model(model_cls)
+    hidden = torch.randn(1, 4, 8)
+    encoder_hidden = torch.randn(1, 5, 8)
+
+    unmasked_output = _forward(model, hidden, None, encoder_hidden)
+    masked_output = _forward(model, hidden, torch.ones(1, 4, dtype=torch.bool), encoder_hidden)
+
+    # Not bit-exact across SDPA backends: an all-true mask can pick a different kernel.
+    torch.testing.assert_close(unmasked_output, masked_output, atol=2e-6, rtol=2e-6)
+
+
+@pytest.mark.parametrize("model_cls", [DiT, AlternateVLDiT])
 def test_masked_padding_has_zero_input_gradient(model_cls):
     torch.manual_seed(11)
     model = _make_model(model_cls)

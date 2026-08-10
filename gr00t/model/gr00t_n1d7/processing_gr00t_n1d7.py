@@ -442,6 +442,30 @@ class Gr00tN1d7Processor(BaseProcessor):
         )
         return {f"action.{key}": value for key, value in result.items()}
 
+    def _build_action_mask(self, embodiment_tag: EmbodimentTag) -> torch.Tensor:
+        """Mask over the padded action tensor, shape (max_action_horizon, max_action_dim).
+
+        Ones cover the embodiment's own horizon and action dimensions; everything else is
+        padding and must stay out of the action encoder and the DiT.
+        """
+        action_config = self.modality_configs[embodiment_tag.value]["action"]
+        action_horizon = len(action_config.delta_indices)
+        action_dim = self.state_action_processor.get_action_dim(embodiment_tag.value)
+        assert action_horizon <= self.max_action_horizon, (
+            f"Action horizon {action_horizon} (from delta_indices) exceeds"
+            f" max_action_horizon {self.max_action_horizon}. Increase model config"
+            f" action_horizon to >= {action_horizon}."
+        )
+        assert action_dim <= self.max_action_dim, (
+            f"Action dimension {action_dim} exceeds max_action_dim {self.max_action_dim}."
+        )
+        action_mask = torch.zeros(
+            (self.max_action_horizon, self.max_action_dim), dtype=torch.float32
+        )
+        if action_horizon > 0 and action_dim > 0:
+            action_mask[:action_horizon, :action_dim] = 1.0
+        return action_mask
+
     def process_observation(self, observation: dict[str, Any], embodiment_tag: EmbodimentTag):
         """Process batched observation tensors for inference.
 
@@ -529,23 +553,9 @@ class Gr00tN1d7Processor(BaseProcessor):
         transformed_observation["embodiment_id"] = embodiment_id
 
         # Mask both the valid horizon and embodiment-specific action dimensions.
-        action_config = modality_config["action"]
-        action_horizon = len(action_config.delta_indices)
-        action_dim = self.state_action_processor.get_action_dim(embodiment_tag.value)
-        assert action_horizon <= self.max_action_horizon, (
-            f"Action horizon {action_horizon} (from delta_indices) exceeds"
-            f" max_action_horizon {self.max_action_horizon}. Increase model config"
-            f" action_horizon to >= {action_horizon}."
+        transformed_observation["action_mask"] = self._build_action_mask(embodiment_tag).repeat(
+            B, 1, 1
         )
-        assert action_dim <= self.max_action_dim, (
-            f"Action dimension {action_dim} exceeds max_action_dim {self.max_action_dim}."
-        )
-        action_mask = torch.zeros(
-            (B, self.max_action_horizon, self.max_action_dim), dtype=torch.float32
-        )
-        if action_horizon > 0 and action_dim > 0:
-            action_mask[:, :action_horizon, :action_dim] = 1.0
-        transformed_observation["action_mask"] = action_mask
 
         return BatchFeature(transformed_observation)
 
@@ -643,7 +653,9 @@ class Gr00tN1d7Processor(BaseProcessor):
         else:
             assert not self.training, "Action is required in training mode"
             normalized_actions = None
-            action_mask = None
+            # Inference steps carry no action, but the action head still needs the mask to
+            # keep padded horizon and dimension entries out of the encoder and the DiT.
+            action_mask = self._build_action_mask(embodiment_tag)
 
         # Concatenate states with optional dropout/noise augmentation
         state_keys = self.modality_configs[embodiment_tag.value]["state"].modality_keys

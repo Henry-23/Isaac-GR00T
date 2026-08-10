@@ -407,6 +407,10 @@ class Gr00tN1d7ActionHead(nn.Module):
         action_mask = None
         if getattr(self.config, "strict_action_padding_mask", False):
             action_mask = _expand_action_mask(action_input.get("action_mask"), actions)
+            if action_mask is None:
+                raise ValueError(
+                    "action_mask is required when strict_action_padding_mask is enabled"
+                )
         action_token_mask = None
         hidden_attention_mask = None
         if action_mask is not None:

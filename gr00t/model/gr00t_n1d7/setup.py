@@ -73,6 +73,12 @@ class Gr00tN1d7Pipeline(ModelPipeline):
     def setup(self):
         self.model = self._create_model()
         self.train_dataset, self.eval_dataset = self._create_dataset(self.save_cfg_dir)
+        model_strict_mask = getattr(self.model.config, "strict_action_padding_mask", False)
+        if model_strict_mask != self.processor.strict_action_padding_mask:
+            raise RuntimeError(
+                "Model and processor disagree on strict_action_padding_mask: "
+                f"model={model_strict_mask}, processor={self.processor.strict_action_padding_mask}"
+            )
         self.data_collator = self._create_collator()
 
     def _create_model(self):
@@ -87,6 +93,7 @@ class Gr00tN1d7Pipeline(ModelPipeline):
                 tune_diffusion_model=self.config.model.tune_diffusion_model,
                 tune_vlln=self.config.model.tune_vlln,
                 state_dropout_prob=self.config.model.state_dropout_prob,
+                strict_action_padding_mask=self.config.model.strict_action_padding_mask,
                 backbone_trainable_params_fp32=self.config.model.backbone_trainable_params_fp32,
                 load_bf16=self.config.model.load_bf16,
                 transformers_loading_kwargs=self.transformers_loading_kwargs,

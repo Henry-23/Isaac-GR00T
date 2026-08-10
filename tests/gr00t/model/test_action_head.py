@@ -211,6 +211,17 @@ class TestActionHeadGetAction:
         invalid = action_input["action_mask"] == 0
         assert torch.count_nonzero(out["action_pred"][invalid]) == 0
 
+    def test_strict_inference_requires_action_mask(self, action_head):
+        head, config = action_head
+        action_input = _make_action_input(config)
+        del action_input["action"]
+        del action_input["action_mask"]
+
+        with pytest.raises(
+            ValueError, match="action_mask is required when strict_action_padding_mask is enabled"
+        ):
+            head.get_action(_make_backbone_output(config), action_input)
+
     def test_legacy_inference_ignores_action_mask(self):
         config = _small_config(strict_action_padding_mask=False)
         head = Gr00tN1d7ActionHead(config)

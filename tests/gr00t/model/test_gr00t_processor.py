@@ -227,6 +227,25 @@ class TestProcessorCall:
 
         torch.testing.assert_close(train_mask, inference_mask)
 
+    def test_collated_inference_batch_carries_action_mask(self, processor, proc_config):
+        """The collator is the last hop before the model; the key must survive it."""
+        samples = []
+        for _ in range(2):
+            step_data = _make_step_data(proc_config)
+            step_data.actions = {}
+            samples.append(
+                processor([{"type": MessageType.EPISODE_STEP.value, "content": step_data}])
+            )
+
+        collated = processor.collator(samples)["inputs"]
+
+        assert "action_mask" in collated
+        assert collated["action_mask"].shape == (
+            len(samples),
+            proc_config["max_action_horizon"],
+            proc_config["max_action_dim"],
+        )
+
     def test_inference_action_mask_covers_horizon_and_dimension(self, processor, proc_config):
         mc = proc_config["modality_configs"][EMBODIMENT]
         with open(FIXTURE_DIR / "statistics.json") as f:

@@ -444,6 +444,19 @@ class Gr00tN1d7Processor(BaseProcessor):
         )
         return {f"action.{key}": value for key, value in result.items()}
 
+    def validate_strict_action_padding_mask(self, model_config) -> None:
+        """Raise unless the model consumes the strict mask exactly when this processor emits it.
+
+        One direction is silent: with the model opted out, the processor still builds and
+        ships the mask and the model discards it, so padded actions leak with no error.
+        """
+        if model_config.strict_action_padding_mask != self.strict_action_padding_mask:
+            raise RuntimeError(
+                "Model and processor disagree on strict_action_padding_mask: "
+                f"model={model_config.strict_action_padding_mask}, "
+                f"processor={self.strict_action_padding_mask}"
+            )
+
     def _build_action_mask(self, embodiment_tag: EmbodimentTag) -> torch.Tensor:
         """Mask over the padded action tensor, shape (max_action_horizon, max_action_dim).
 

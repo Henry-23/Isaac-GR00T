@@ -25,6 +25,7 @@ from pathlib import Path
 import tempfile
 from unittest.mock import MagicMock, patch
 
+from gr00t.configs.model.gr00t_n1d7 import Gr00tN1d7Config
 from gr00t.data.embodiment_tags import EmbodimentTag
 from gr00t.data.types import MessageType, VLAStepData
 import numpy as np
@@ -226,6 +227,18 @@ class TestProcessorCall:
         )["action_mask"]
 
         torch.testing.assert_close(train_mask, inference_mask)
+
+    @pytest.mark.parametrize("processor_strict", [True, False])
+    @pytest.mark.parametrize("model_strict", [True, False])
+    def test_strict_mask_agreement_is_enforced(self, processor, model_strict, processor_strict):
+        processor.strict_action_padding_mask = processor_strict
+        model_config = Gr00tN1d7Config(strict_action_padding_mask=model_strict)
+
+        if model_strict == processor_strict:
+            processor.validate_strict_action_padding_mask(model_config)
+        else:
+            with pytest.raises(RuntimeError, match="disagree on strict_action_padding_mask"):
+                processor.validate_strict_action_padding_mask(model_config)
 
     def test_collated_inference_batch_carries_action_mask(self, processor, proc_config):
         """The collator is the last hop before the model; the key must survive it."""

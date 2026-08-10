@@ -73,12 +73,7 @@ class Gr00tN1d7Pipeline(ModelPipeline):
     def setup(self):
         self.model = self._create_model()
         self.train_dataset, self.eval_dataset = self._create_dataset(self.save_cfg_dir)
-        model_strict_mask = getattr(self.model.config, "strict_action_padding_mask", False)
-        if model_strict_mask != self.processor.strict_action_padding_mask:
-            raise RuntimeError(
-                "Model and processor disagree on strict_action_padding_mask: "
-                f"model={model_strict_mask}, processor={self.processor.strict_action_padding_mask}"
-            )
+        self.processor.validate_strict_action_padding_mask(self.model.config)
         self.data_collator = self._create_collator()
 
     def _create_model(self):

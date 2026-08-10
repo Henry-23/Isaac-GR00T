@@ -232,6 +232,7 @@ class Gr00tN1d7Processor(BaseProcessor):
         max_state_dim: int = 29,
         max_action_dim: int = 29,
         max_action_horizon: int = 50,
+        strict_action_padding_mask: bool = False,
         apply_sincos_state_encoding: bool = False,
         use_albumentations: bool = False,
         extra_augmentation_config: dict | None = None,
@@ -279,6 +280,7 @@ class Gr00tN1d7Processor(BaseProcessor):
         self.max_state_dim = max_state_dim
         self.max_action_dim = max_action_dim
         self.max_action_horizon = max_action_horizon
+        self.strict_action_padding_mask = strict_action_padding_mask
         validate_action_horizons(self.modality_configs, self.max_action_horizon)
 
         # Save image processing settings
@@ -446,7 +448,7 @@ class Gr00tN1d7Processor(BaseProcessor):
         """Mask over the padded action tensor, shape (max_action_horizon, max_action_dim).
 
         Ones cover the embodiment's own horizon and action dimensions; everything else is
-        padding and must stay out of the action encoder and the DiT.
+        padding excluded by the strict action-padding mode.
         """
         action_config = self.modality_configs[embodiment_tag.value]["action"]
         action_horizon = len(action_config.delta_indices)
@@ -475,7 +477,8 @@ class Gr00tN1d7Processor(BaseProcessor):
             embodiment_tag: Embodiment tag identifying the robot configuration.
 
         Returns:
-            BatchFeature with tokenized VLM inputs, state, embodiment_id, and action_mask.
+            BatchFeature with tokenized VLM inputs, state, and embodiment_id. ``action_mask``
+            is included when strict action-padding masking is enabled.
         """
         modality_config = self.modality_configs[embodiment_tag.value]
         transformed_observation = {}
@@ -552,10 +555,10 @@ class Gr00tN1d7Processor(BaseProcessor):
         )
         transformed_observation["embodiment_id"] = embodiment_id
 
-        # Mask both the valid horizon and embodiment-specific action dimensions.
-        transformed_observation["action_mask"] = self._build_action_mask(embodiment_tag).repeat(
-            B, 1, 1
-        )
+        if self.strict_action_padding_mask:
+            transformed_observation["action_mask"] = self._build_action_mask(embodiment_tag).repeat(
+                B, 1, 1
+            )
 
         return BatchFeature(transformed_observation)
 
@@ -653,9 +656,9 @@ class Gr00tN1d7Processor(BaseProcessor):
         else:
             assert not self.training, "Action is required in training mode"
             normalized_actions = None
-            # Inference steps carry no action, but the action head still needs the mask to
-            # keep padded horizon and dimension entries out of the encoder and the DiT.
-            action_mask = self._build_action_mask(embodiment_tag)
+            action_mask = (
+                self._build_action_mask(embodiment_tag) if self.strict_action_padding_mask else None
+            )
 
         # Concatenate states with optional dropout/noise augmentation
         state_keys = self.modality_configs[embodiment_tag.value]["state"].modality_keys
@@ -797,6 +800,7 @@ class Gr00tN1d7Processor(BaseProcessor):
                 "max_state_dim": self.max_state_dim,
                 "max_action_dim": self.max_action_dim,
                 "max_action_horizon": self.max_action_horizon,
+                "strict_action_padding_mask": self.strict_action_padding_mask,
                 # StateActionProcessor settings
                 "use_percentiles": self.use_percentiles,
                 "use_mean_std": self.use_mean_std,
@@ -876,6 +880,7 @@ class Gr00tN1d7Processor(BaseProcessor):
         processor_kwargs.setdefault("model_name", "nvidia/Cosmos-Reason2-2B")
         processor_kwargs.setdefault("model_type", "qwen")
         processor_kwargs.setdefault("clip_outliers", True)
+        processor_kwargs.setdefault("strict_action_padding_mask", False)
 
         # Directly override other processor kwargs
         if kwargs:
@@ -895,6 +900,7 @@ class Gr00tN1d7Processor(BaseProcessor):
                 "max_action_horizon",
                 "max_state_dim",
                 "max_action_dim",
+                "strict_action_padding_mask",
             ]
             for key in override_keys:
                 if key in kwargs:

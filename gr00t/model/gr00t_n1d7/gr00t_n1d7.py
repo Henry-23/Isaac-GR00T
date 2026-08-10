@@ -249,14 +249,24 @@ class Gr00tN1d7ActionHead(nn.Module):
         action_mask = _expand_action_mask(action_input.action_mask, actions)
         if action_mask is None:
             raise ValueError("action_mask is required during training")
-        actions = actions * action_mask
-        noise = torch.randn(actions.shape, device=actions.device, dtype=actions.dtype) * action_mask
+        strict_action_mask = (
+            action_mask if getattr(self.config, "strict_action_padding_mask", False) else None
+        )
+        if strict_action_mask is not None:
+            actions = actions * strict_action_mask
+        noise = torch.randn(actions.shape, device=actions.device, dtype=actions.dtype)
+        if strict_action_mask is not None:
+            noise = noise * strict_action_mask
         t = self.sample_time(actions.shape[0], device=actions.device, dtype=actions.dtype)
         t = t[:, None, None]  # shape (B,1,1) for broadcast
 
-        noisy_trajectory = ((1 - t) * noise + t * actions) * action_mask
-        velocity = (actions - noise) * action_mask
-        action_token_mask = action_mask.any(dim=-1)
+        noisy_trajectory = (1 - t) * noise + t * actions
+        velocity = actions - noise
+        action_token_mask = None
+        if strict_action_mask is not None:
+            noisy_trajectory = noisy_trajectory * strict_action_mask
+            velocity = velocity * strict_action_mask
+            action_token_mask = strict_action_mask.any(dim=-1)
 
         # Convert (continuous) t -> discrete if needed
         t_discretized = (t[:, 0, 0] * self.num_timestep_buckets).long()
@@ -267,19 +277,22 @@ class Gr00tN1d7ActionHead(nn.Module):
             pos_ids = torch.arange(action_features.shape[1], dtype=torch.long, device=device)
             pos_embs = self.position_embedding(pos_ids).unsqueeze(0)
             action_features = action_features + pos_embs
-        action_features = action_features * action_token_mask.unsqueeze(-1).to(
-            dtype=action_features.dtype
-        )
+        if action_token_mask is not None:
+            action_features = action_features * action_token_mask.unsqueeze(-1).to(
+                dtype=action_features.dtype
+            )
 
         # Join vision, language, state and action embedding along sequence dimension.
         sa_embs = torch.cat((state_features, action_features), dim=1)
-        hidden_attention_mask = torch.cat(
-            (
-                torch.ones(state_features.shape[:2], device=device, dtype=torch.bool),
-                action_token_mask,
-            ),
-            dim=1,
-        )
+        hidden_attention_mask = None
+        if action_token_mask is not None:
+            hidden_attention_mask = torch.cat(
+                (
+                    torch.ones(state_features.shape[:2], device=device, dtype=torch.bool),
+                    action_token_mask,
+                ),
+                dim=1,
+            )
         vl_attn_mask = backbone_output.backbone_attention_mask
 
         if self.config.use_alternate_vl_dit:
@@ -306,7 +319,9 @@ class Gr00tN1d7ActionHead(nn.Module):
             )
 
         pred = self.action_decoder(model_output, embodiment_id)
-        pred_actions = pred[:, -actions.shape[1] :] * action_mask
+        pred_actions = pred[:, -actions.shape[1] :]
+        if strict_action_mask is not None:
+            pred_actions = pred_actions * strict_action_mask
 
         # Slice out only the action portion of pred and target.
         action_loss = F.mse_loss(pred_actions, velocity, reduction="none") * action_mask
@@ -389,7 +404,9 @@ class Gr00tN1d7ActionHead(nn.Module):
 
         dt = 1.0 / self.num_inference_timesteps
         vel_strength = torch.ones_like(actions)
-        action_mask = _expand_action_mask(action_input.get("action_mask"), actions)
+        action_mask = None
+        if getattr(self.config, "strict_action_padding_mask", False):
+            action_mask = _expand_action_mask(action_input.get("action_mask"), actions)
         action_token_mask = None
         hidden_attention_mask = None
         if action_mask is not None:

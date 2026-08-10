@@ -202,12 +202,22 @@ class TestProcessorCall:
         assert torch.all(action_mask[action_horizon:, :] == 0)
         assert torch.all(action_mask[:, action_dim:] == 0)
 
+    def test_legacy_inference_does_not_emit_action_mask(self, processor, proc_config):
+        processor.strict_action_padding_mask = False
+        step_data = _make_step_data(proc_config)
+        step_data.actions = {}
+        messages = [{"type": MessageType.EPISODE_STEP.value, "content": step_data}]
+
+        result = processor(messages)
+
+        assert "action_mask" not in result
+
     def test_action_mask_identical_with_and_without_action(self, processor, proc_config):
         """Padding must be masked the same way in training and in inference."""
         train_step = _make_step_data(proc_config)
-        train_mask = processor(
-            [{"type": MessageType.EPISODE_STEP.value, "content": train_step}]
-        )["action_mask"]
+        train_mask = processor([{"type": MessageType.EPISODE_STEP.value, "content": train_step}])[
+            "action_mask"
+        ]
 
         inference_step = _make_step_data(proc_config)
         inference_step.actions = {}

@@ -525,7 +525,9 @@ def action_head_tensorrt_forward(self, backbone_output, action_input, options=No
             device=device,
         )
 
-    action_mask = _expand_action_mask(action_input.get("action_mask"), actions)
+    action_mask = None
+    if getattr(self.config, "strict_action_padding_mask", False):
+        action_mask = _expand_action_mask(action_input.get("action_mask"), actions)
     action_token_mask = None
     hidden_attention_mask = None
     if action_mask is not None:
@@ -958,10 +960,12 @@ def _setup_dit_only(policy, trt_engine_path):
             device=device,
         )
 
-        action_mask = _expand_action_mask(
-            action_input.get("action_mask") if action_input is not None else None,
-            actions,
-        )
+        action_mask = None
+        if getattr(action_head.config, "strict_action_padding_mask", False):
+            action_mask = _expand_action_mask(
+                action_input.get("action_mask") if action_input is not None else None,
+                actions,
+            )
         action_token_mask = None
         hidden_attention_mask = None
         if action_mask is not None:

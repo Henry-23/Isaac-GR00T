@@ -38,6 +38,7 @@ def _small_config(**overrides) -> Gr00tN1d7Config:
         max_state_dim=7,
         max_action_dim=7,
         action_horizon=4,
+        strict_action_padding_mask=True,
         state_history_length=1,
         num_inference_timesteps=2,
         max_num_embodiments=4,
@@ -98,6 +99,10 @@ def _make_action_input(config, batch_size=2):
             "action_mask": torch.ones(batch_size, config.action_horizon, config.max_action_dim),
         }
     )
+
+
+def test_strict_action_padding_mask_is_opt_in():
+    assert Gr00tN1d7Config().strict_action_padding_mask is False
 
 
 class TestActionHeadForward:
@@ -205,6 +210,32 @@ class TestActionHeadGetAction:
 
         invalid = action_input["action_mask"] == 0
         assert torch.count_nonzero(out["action_pred"][invalid]) == 0
+
+    def test_legacy_inference_ignores_action_mask(self):
+        config = _small_config(strict_action_padding_mask=False)
+        head = Gr00tN1d7ActionHead(config)
+        head.eval()
+        action_input = _make_action_input(config)
+        del action_input["action"]
+        action_input["action_mask"].zero_()
+        action_input["action_mask"][:, :2, :5] = 1
+        backbone_output = _make_backbone_output(config)
+
+        def zero_velocity(hidden_states, embodiment_id):
+            return torch.zeros(
+                *hidden_states.shape[:-1], config.max_action_dim, device=hidden_states.device
+            )
+
+        with (
+            patch(
+                "gr00t.model.gr00t_n1d7.gr00t_n1d7.torch.randn",
+                return_value=torch.ones(2, config.action_horizon, config.max_action_dim),
+            ),
+            patch.object(head.action_decoder, "forward", side_effect=zero_velocity),
+        ):
+            out = head.get_action(backbone_output, action_input)
+
+        torch.testing.assert_close(out["action_pred"], torch.ones_like(out["action_pred"]))
 
 
 class TestActionHeadEncodeFeatures:

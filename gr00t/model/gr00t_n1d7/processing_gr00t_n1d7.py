@@ -461,7 +461,10 @@ class Gr00tN1d7Processor(BaseProcessor):
         """Mask over the padded action tensor, shape (max_action_horizon, max_action_dim).
 
         Ones cover the embodiment's own horizon and action dimensions; everything else is
-        padding excluded by the strict action-padding mode.
+        padding excluded by the strict action-padding mode. This config-derived mask is for
+        inference, where no target action is available. Training intentionally derives its
+        mask extent from the actual normalized action tensor so a future short chunk cannot
+        mark zero-padded targets as valid.
         """
         action_config = self.modality_configs[embodiment_tag.value]["action"]
         action_horizon = len(action_config.delta_indices)
@@ -477,8 +480,7 @@ class Gr00tN1d7Processor(BaseProcessor):
         action_mask = torch.zeros(
             (self.max_action_horizon, self.max_action_dim), dtype=torch.float32
         )
-        if action_horizon > 0 and action_dim > 0:
-            action_mask[:action_horizon, :action_dim] = 1.0
+        action_mask[:action_horizon, :action_dim] = 1.0
         return action_mask
 
     def process_observation(self, observation: dict[str, Any], embodiment_tag: EmbodimentTag):

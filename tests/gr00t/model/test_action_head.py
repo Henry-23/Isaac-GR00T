@@ -24,7 +24,7 @@ import math
 from unittest.mock import patch
 
 from gr00t.configs.model.gr00t_n1d7 import Gr00tN1d7Config
-from gr00t.model.gr00t_n1d7.gr00t_n1d7 import Gr00tN1d7ActionHead
+from gr00t.model.gr00t_n1d7.gr00t_n1d7 import Gr00tN1d7ActionHead, _expand_action_mask
 import pytest
 import torch
 from transformers.feature_extraction_utils import BatchFeature
@@ -103,6 +103,14 @@ def _make_action_input(config, batch_size=2):
 
 def test_strict_action_padding_mask_is_opt_in():
     assert Gr00tN1d7Config().strict_action_padding_mask is False
+
+
+def test_expand_action_mask_rejects_horizon_only_mask():
+    actions = torch.zeros(2, 4, 7)
+    horizon_only_mask = torch.ones(2, 4)
+
+    with pytest.raises(ValueError, match="action_mask must have shape"):
+        _expand_action_mask(horizon_only_mask, actions)
 
 
 class TestActionHeadForward:

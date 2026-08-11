@@ -226,7 +226,7 @@ class TestProcessorCall:
             [{"type": MessageType.EPISODE_STEP.value, "content": inference_step}]
         )["action_mask"]
 
-        torch.testing.assert_close(train_mask, inference_mask)
+        assert torch.equal(train_mask, inference_mask)
 
     @pytest.mark.parametrize("processor_strict", [True, False])
     @pytest.mark.parametrize("model_strict", [True, False])

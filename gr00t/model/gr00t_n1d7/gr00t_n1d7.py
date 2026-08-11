@@ -40,11 +40,9 @@ def _expand_action_mask(
 ) -> torch.Tensor | None:
     if action_mask is None:
         return None
-    if action_mask.ndim == 2:
-        action_mask = action_mask.unsqueeze(-1)
     if action_mask.ndim != 3 or action_mask.shape[:2] != actions.shape[:2]:
         raise ValueError(
-            "action_mask must have shape (batch, horizon) or "
+            "action_mask must have shape "
             f"(batch, horizon, action_dim), got {tuple(action_mask.shape)}"
         )
     if action_mask.shape[-1] not in (1, actions.shape[-1]):
